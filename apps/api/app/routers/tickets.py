@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.access import get_agent_or_404, owned_agent, require_module
 from app.database import get_db
-from app.deps import current_user, require_agent_secret
+from app.deps import current_approved_user, require_agent_secret
 from app.models import Ticket, User
 from app.notify import notify_event
 from app.schemas import TicketCreate, TicketOut, TicketStatusIn
@@ -50,7 +50,7 @@ def _create(db: Session, agent_id: int, body: TicketCreate) -> Ticket:
 
 
 @dash.get("", response_model=list[TicketOut])
-def list_tickets(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_tickets(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     owned_agent(db, user, agent_id)
     return (
         db.query(Ticket)
@@ -65,7 +65,7 @@ def list_tickets(agent_id: int, user: User = Depends(current_user), db: Session 
 def create_ticket_dash(
     agent_id: int,
     body: TicketCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)
@@ -77,7 +77,7 @@ def patch_ticket(
     agent_id: int,
     ticket_id: int,
     body: TicketStatusIn,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)

@@ -4,13 +4,11 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: voice_chat
-      MYSQL_ROOT_PASSWORD: voicechat
-    ports:
-      - "3307:3306"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pvoicechat"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -22,9 +20,10 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: mysql+pymysql://root:voicechat@mysql:3306/voice_chat
-      API_PUBLIC_URL: http://localhost:8000
-      WEB_ORIGIN: http://localhost:3000
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/voice_chat
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
     ports:
       - "8000:8000"
     depends_on:
@@ -39,7 +38,7 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000"
     depends_on:

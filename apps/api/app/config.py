@@ -13,12 +13,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    app_env: str = "development"
     database_url: str = "mysql+pymysql://root@localhost:3306/voice_chat"
     jwt_secret: str = "change-me-to-a-long-random-string"
-    jwt_expire_minutes: int = 10080
+    jwt_expire_minutes: int = 1440
     api_public_url: str = "http://localhost:8000"
     web_origin: str = "http://localhost:3000"
     internal_agent_secret: str = "change-me-internal-agent-secret"
+
+    @property
+    def is_development(self) -> bool:
+        return self.app_env.strip().lower() == "development"
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() == "production"
     livekit_url: str = ""
     livekit_api_key: str = ""
     livekit_api_secret: str = ""

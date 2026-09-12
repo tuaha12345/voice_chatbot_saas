@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.access import owned_agent
 from app.database import get_db
-from app.deps import current_user
+from app.deps import current_approved_user
 from app.models import Conversation, User
 from app.schemas import ConversationOut
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/agents/{agent_id}/conversations", tags=["conversa
 @router.get("", response_model=list[ConversationOut])
 def list_conversations(
     agent_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)
@@ -33,7 +33,7 @@ def list_conversations(
 def get_conversation(
     agent_id: int,
     conversation_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)

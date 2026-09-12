@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy import text
 
 from app.config import settings
+from app.cors_middleware import SecureCORSMiddleware
 from app.database import Base, engine
 from app.bootstrap import bootstrap_admin
 from app.routers import (
@@ -29,16 +29,35 @@ from app.routers import (
     widget,
 )
 
-app = FastAPI(title="Voice Chatbot SaaS API", version="0.1.0")
+_PLACEHOLDER_JWT = "change-me-to-a-long-random-string"
+_PLACEHOLDER_INTERNAL = "change-me-internal-agent-secret"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.web_origin, "http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"https?://.*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+
+def assert_production_secrets() -> None:
+    if not settings.is_production:
+        return
+    bad: list[str] = []
+    if not settings.jwt_secret or settings.jwt_secret == _PLACEHOLDER_JWT:
+        bad.append("JWT_SECRET")
+    if not settings.internal_agent_secret or settings.internal_agent_secret == _PLACEHOLDER_INTERNAL:
+        bad.append("INTERNAL_AGENT_SECRET")
+    if bad:
+        raise RuntimeError(
+            "Insecure placeholder secrets are not allowed in production: " + ", ".join(bad)
+        )
+
+
+app = FastAPI(
+    title="Voice Chatbot SaaS API",
+    version="0.1.0",
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
+    openapi_url="/openapi.json" if settings.is_development else None,
 )
+
+# Path-aware CORS: dashboard stays locked to WEB_ORIGIN; widget uses
+# agent.allowed_origins for real auth (see SecureCORSMiddleware).
+app.add_middleware(SecureCORSMiddleware)
 
 app.include_router(auth.router)
 app.include_router(agents.router)
@@ -71,14 +90,25 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.on_event("startup")
 def startup():
+    assert_production_secrets()
     Base.metadata.create_all(bind=engine)
     for stmt in (
         "ALTER TABLE users ADD COLUMN plan_minutes INT DEFAULT 120",
         "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT 1",
         "ALTER TABLE agents ADD COLUMN realtime_model VARCHAR(128) DEFAULT 'gpt-4o-realtime-preview'",
         "ALTER TABLE agents ADD COLUMN character_enabled BOOLEAN DEFAULT 0",
         "ALTER TABLE agents ADD COLUMN character_pack VARCHAR(64) DEFAULT 'character_emoji'",
+        "ALTER TABLE agents ADD COLUMN launcher_mode VARCHAR(16) DEFAULT 'mic'",
+        "ALTER TABLE agents ADD COLUMN launcher_skin VARCHAR(64) NULL",
+        "ALTER TABLE agents ADD COLUMN launcher_label VARCHAR(80) DEFAULT 'Tap to talk with AI'",
+        "ALTER TABLE agents ADD COLUMN launcher_color VARCHAR(16) DEFAULT '#2563eb'",
+        "ALTER TABLE agents ADD COLUMN launcher_size INT DEFAULT 160",
+        "ALTER TABLE agents ADD COLUMN character_size INT DEFAULT 200",
+        "ALTER TABLE agents ADD COLUMN panel_width INT DEFAULT 280",
+        "ALTER TABLE agents ADD COLUMN show_transcription BOOLEAN DEFAULT 0",
         "ALTER TABLE agents ADD COLUMN site_pages TEXT",
+        "ALTER TABLE agents ADD COLUMN max_call_minutes INT DEFAULT 10",
     ):
         try:
             with engine.begin() as conn:
@@ -103,7 +133,7 @@ def startup():
 
 @app.get("/")
 def root():
-    return RedirectResponse("/docs")
+    return {"ok": True, "service": "voice-chat-api", "env": settings.app_env}
 
 
 @app.get("/health")
@@ -120,11 +150,21 @@ def widget_js():
             path = fallback
         else:
             return HTMLResponse("widget.js missing", status_code=404)
-    return FileResponse(path, media_type="application/javascript")
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/demo", response_class=HTMLResponse)
 def demo():
+    if not settings.is_development:
+        return HTMLResponse("Not found", status_code=404)
     return """<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Voice widget demo</title>

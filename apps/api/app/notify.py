@@ -45,11 +45,20 @@ def send_email(to_addr: str, subject: str, body: str) -> None:
 def post_webhook(url: str, secret: str, payload: dict) -> None:
     if not url or not url.strip():
         return
+    try:
+        from app.url_safety import validate_webhook_url
+
+        safe_url = validate_webhook_url(url)
+    except ValueError as exc:
+        log.warning("Skipping unsafe webhook URL: %s", exc)
+        return
+    if not safe_url:
+        return
     headers = {"Content-Type": "application/json"}
     if secret:
         headers["X-Webhook-Secret"] = secret
     with httpx.Client(timeout=10) as client:
-        client.post(url.strip(), headers=headers, content=json.dumps(payload, default=str))
+        client.post(safe_url, headers=headers, content=json.dumps(payload, default=str))
 
 
 def notify_event(

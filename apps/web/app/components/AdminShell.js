@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/users", label: "Users", match: (p) => p.startsWith("/admin/users") },
   { href: "/admin/agents", label: "Agents", match: (p) => p.startsWith("/admin/agents") },
   { href: "/admin/usage", label: "Usage", match: (p) => p.startsWith("/admin/usage") },
+  { href: "/settings", label: "Account", match: (p) => p.startsWith("/settings") },
 ];
 
 export default function AdminShell({ children }) {

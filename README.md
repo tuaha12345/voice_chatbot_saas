@@ -127,7 +127,10 @@ docker compose up --build
 
 - API: http://localhost:8000
 - Dashboard: http://localhost:3000
-- MySQL: localhost:3307
+
+MySQL stays on the Docker network only (not published to the host).
+
+**Production without Docker** (VPS + Nginx + systemd): see [DEPLOY-NO-DOCKER.md](DEPLOY-NO-DOCKER.md).
 
 ## Layout
 

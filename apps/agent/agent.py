@@ -254,6 +254,32 @@ async def _publish_navigate(page_key: str, path: str) -> bool:
         return False
 
 
+async def _publish_transcript(role: str, text: str) -> None:
+    """Send a live caption line to the visitor widget via LiveKit data channel."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return
+    if len(cleaned) > 500:
+        cleaned = cleaned[:500]
+    role_norm = "assistant" if str(role).lower() in ("assistant", "agent") else "user"
+    payload = json.dumps(
+        {"type": "transcript", "role": role_norm, "text": cleaned},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    try:
+        from livekit.agents import get_job_context
+
+        job = get_job_context()
+        room = job.room
+        lp = room.local_participant
+        try:
+            await lp.publish_data(payload, reliable=True)
+        except TypeError:
+            await lp.publish_data(payload)
+    except Exception:
+        log.exception("publish_data transcript failed")
+
+
 async def _hangup_call(delay_s: float = 2.5) -> None:
     """Wait briefly for goodbye speech, then delete the LiveKit room."""
     try:
@@ -434,6 +460,12 @@ async def entrypoint(ctx):
     instructions = build_instructions(ctx_data)
     voice = ctx_data.get("voice") or "alloy"
     realtime_model = ctx_data.get("realtime_model") or OPENAI_REALTIME_MODEL
+    try:
+        max_call_minutes = int(ctx_data.get("max_call_minutes") or 10)
+    except (TypeError, ValueError):
+        max_call_minutes = 10
+    max_call_minutes = max(1, min(max_call_minutes, 120))
+    show_transcription = bool(ctx_data.get("show_transcription"))
     room_name = getattr(ctx.room, "name", None) or f"agent-{agent_id}"
     key = room_name
     transcripts[key] = []
@@ -481,8 +513,14 @@ async def entrypoint(ctx):
 
     def on_user(ev):
         text = getattr(ev, "transcript", None) or getattr(ev, "text", None) or str(ev)
-        if text:
-            transcripts[key].append({"role": "user", "content": str(text)})
+        if not text:
+            return
+        is_final = getattr(ev, "is_final", True)
+        if is_final is False:
+            return
+        transcripts[key].append({"role": "user", "content": str(text)})
+        if show_transcription:
+            asyncio.create_task(_publish_transcript("user", str(text)))
 
     def on_metrics(ev):
         try:
@@ -495,7 +533,10 @@ async def entrypoint(ctx):
     except Exception:
         pass
     try:
-        session.on("conversation_item_added", lambda ev: _capture_item(key, ev))
+        session.on(
+            "conversation_item_added",
+            lambda ev: _capture_item(key, ev, publish=show_transcription),
+        )
     except Exception:
         pass
     for evt in ("metrics_collected", "metrics_updated", "usage_updated"):
@@ -521,7 +562,29 @@ async def entrypoint(ctx):
     except Exception:
         log.exception("generate_reply failed")
 
+    async def enforce_call_limit():
+        # Leave a few seconds for goodbye speech before room delete
+        wait_s = max(30.0, (max_call_minutes * 60.0) - 8.0)
+        try:
+            await asyncio.sleep(wait_s)
+        except Exception:
+            return
+        try:
+            await session.generate_reply(
+                instructions=(
+                    "The maximum call time has been reached. "
+                    "Say one short warm goodbye now. Do not ask more questions."
+                )
+            )
+        except Exception:
+            log.exception("call-limit goodbye failed")
+        await _hangup_call(2.0)
+
+    limit_task = asyncio.create_task(enforce_call_limit())
+
     async def on_shutdown():
+        if not limit_task.done():
+            limit_task.cancel()
         minutes = max(0.1, (time.time() - started) / 60.0)
         await save_transcript(agent_id, room_name, transcripts.get(key, []), minutes)
         try:
@@ -536,17 +599,32 @@ async def entrypoint(ctx):
         asyncio.create_task(_watch_disconnect(ctx, on_shutdown))
 
 
-def _capture_item(key: str, ev) -> None:
+def _capture_item(key: str, ev, publish: bool = False) -> None:
     item = getattr(ev, "item", ev)
     role = getattr(item, "role", None) or getattr(ev, "role", None)
-    content = getattr(item, "text_content", None) or getattr(item, "content", None) or getattr(ev, "text", None)
+    content = getattr(item, "text_content", None)
+    if callable(content):
+        try:
+            content = content()
+        except Exception:
+            content = None
+    if content is None or content == "":
+        content = getattr(item, "content", None) or getattr(ev, "text", None)
     if isinstance(content, list):
         parts = []
         for part in content:
-            parts.append(getattr(part, "text", None) or str(part))
-        content = " ".join(parts)
+            if isinstance(part, str):
+                parts.append(part)
+            else:
+                parts.append(getattr(part, "text", None) or str(part))
+        content = " ".join(p for p in parts if p)
     if role and content:
-        transcripts.setdefault(key, []).append({"role": str(role), "content": str(content)})
+        text = str(content).strip()
+        if not text:
+            return
+        transcripts.setdefault(key, []).append({"role": str(role), "content": text})
+        if publish and str(role).lower() in ("assistant", "agent"):
+            asyncio.create_task(_publish_transcript(str(role), text))
 
 
 async def _watch_disconnect(ctx, on_shutdown):

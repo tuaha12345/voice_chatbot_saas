@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function AgentTabs({ id, current }) {
   const items = [
     ["settings", "Settings", `/agents/${id}`],
-    ["knowledge", "Q&A knowledge", `/agents/${id}/knowledge`],
+    ["knowledge", "Knowledge", `/agents/${id}/knowledge`],
     ["bookings", "Bookings", `/agents/${id}/bookings`],
     ["orders", "Orders", `/agents/${id}/orders`],
     ["catalog", "Catalog", `/agents/${id}/catalog`],

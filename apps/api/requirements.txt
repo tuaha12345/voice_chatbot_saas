@@ -12,3 +12,5 @@ httpx==0.28.1
 livekit-api==0.8.2
 python-multipart==0.0.20
 eval-type-backport==0.2.2
+pypdf==5.4.0
+python-docx==1.1.2

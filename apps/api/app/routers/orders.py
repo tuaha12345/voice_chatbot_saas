@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.access import get_agent_or_404, owned_agent, require_module
 from app.database import get_db
-from app.deps import current_user, require_agent_secret
+from app.deps import current_approved_user, require_agent_secret
 from app.models import Order, User
 from app.notify import notify_event
 from app.schemas import OrderCreate, OrderOut, OrderStatusIn
@@ -49,7 +49,7 @@ def _create(db: Session, agent_id: int, body: OrderCreate) -> Order:
 
 
 @dash.get("", response_model=list[OrderOut])
-def list_orders(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_orders(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     owned_agent(db, user, agent_id)
     return (
         db.query(Order)
@@ -64,7 +64,7 @@ def list_orders(agent_id: int, user: User = Depends(current_user), db: Session =
 def create_order_dash(
     agent_id: int,
     body: OrderCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)
@@ -76,7 +76,7 @@ def patch_order(
     agent_id: int,
     order_id: int,
     body: OrderStatusIn,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)

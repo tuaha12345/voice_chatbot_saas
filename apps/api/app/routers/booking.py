@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.access import get_agent_or_404, owned_agent, require_module
 from app.booking_slots import default_settings, list_slots, list_slots_range, overlaps, parse_start
 from app.database import get_db
-from app.deps import current_user, require_agent_secret
+from app.deps import current_approved_user, require_agent_secret
 from app.models import Agent, Booking, BookingSettings, User
 from app.notify import notify_event
 from app.schemas import BookingCreate, BookingOut, BookingSettingsIn, BookingSettingsOut
@@ -87,7 +87,7 @@ def _create_booking(db: Session, agent: Agent, body: BookingCreate) -> Booking:
 
 
 @dash.get("/settings", response_model=BookingSettingsOut)
-def get_settings(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_settings(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     owned_agent(db, user, agent_id)
     return _get_settings(db, agent_id)
 
@@ -96,7 +96,7 @@ def get_settings(agent_id: int, user: User = Depends(current_user), db: Session 
 def put_settings(
     agent_id: int,
     body: BookingSettingsIn,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)
@@ -156,7 +156,7 @@ def _slots_range_payload(db: Session, agent_id: int, from_day, to_day) -> dict:
 @dash.get("", response_model=list[BookingOut])
 def list_bookings(
     agent_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
     from_date: str | None = Query(None, alias="from", description="YYYY-MM-DD"),
     to_date: str | None = Query(None, alias="to", description="YYYY-MM-DD"),
@@ -177,7 +177,7 @@ def list_bookings(
 @dash.get("/slots")
 def dash_slots(
     agent_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
     date: str | None = Query(None, description="YYYY-MM-DD"),
     from_date: str | None = Query(None, alias="from", description="YYYY-MM-DD"),
@@ -198,7 +198,7 @@ def dash_slots(
 def create_booking_dash(
     agent_id: int,
     body: BookingCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     agent = owned_agent(db, user, agent_id)
@@ -209,7 +209,7 @@ def create_booking_dash(
 def cancel_booking(
     agent_id: int,
     booking_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)

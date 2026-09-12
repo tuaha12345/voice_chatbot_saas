@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.access import get_agent_or_404, owned_agent, require_module
 from app.database import get_db
-from app.deps import current_user, require_agent_secret
+from app.deps import current_approved_user, require_agent_secret
 from app.models import Product, User
 from app.schemas import ProductIn, ProductOut
 
@@ -18,7 +18,7 @@ internal = APIRouter(
 
 
 @dash.get("", response_model=list[ProductOut])
-def list_products(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_products(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     owned_agent(db, user, agent_id)
     return (
         db.query(Product)
@@ -32,7 +32,7 @@ def list_products(agent_id: int, user: User = Depends(current_user), db: Session
 def create_product(
     agent_id: int,
     body: ProductIn,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)
@@ -53,7 +53,7 @@ def create_product(
 def delete_product(
     agent_id: int,
     product_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     owned_agent(db, user, agent_id)

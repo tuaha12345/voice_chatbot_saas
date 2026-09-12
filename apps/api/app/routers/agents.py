@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.deps import current_user
+from app.deps import current_approved_user
 from app.config import settings
 from app.models import (
     Agent,
@@ -24,8 +24,16 @@ from app.models import (
 )
 from app.schemas import AgentCreate, AgentCreatedOut, AgentOut, AgentUpdate, ModulesOut
 from app.security import hash_secret, new_agent_secret, new_public_key
+from app.origin_security import sanitize_allowed_origins_input
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
+
+
+def _sanitize_origins_or_400(value: str | None) -> str:
+    try:
+        return sanitize_allowed_origins_input(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _agent_query(db: Session, user: User, agent_id: int) -> Agent:
@@ -43,7 +51,7 @@ def _agent_query(db: Session, user: User, agent_id: int) -> Agent:
 
 
 @router.get("", response_model=list[AgentOut])
-def list_agents(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_agents(user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     return (
         db.query(Agent)
         .options(joinedload(Agent.modules))
@@ -56,7 +64,7 @@ def list_agents(user: User = Depends(current_user), db: Session = Depends(get_db
 @router.post("", response_model=AgentCreatedOut)
 def create_agent(
     body: AgentCreate,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     secret = new_agent_secret()
@@ -73,7 +81,8 @@ def create_agent(
         system_prompt=prompt,
         public_key=new_public_key(),
         secret_hash=hash_secret(secret),
-        allowed_origins=body.allowed_origins or "*",
+        allowed_origins=_sanitize_origins_or_400(body.allowed_origins or ""),
+        max_call_minutes=int(body.max_call_minutes or 10),
     )
     db.add(agent)
     db.flush()
@@ -86,7 +95,7 @@ def create_agent(
 
 
 @router.get("/{agent_id}", response_model=AgentOut)
-def get_agent(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_agent(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     return _agent_query(db, user, agent_id)
 
 
@@ -94,12 +103,18 @@ def get_agent(agent_id: int, user: User = Depends(current_user), db: Session = D
 def update_agent(
     agent_id: int,
     body: AgentUpdate,
-    user: User = Depends(current_user),
+    user: User = Depends(current_approved_user),
     db: Session = Depends(get_db),
 ):
     agent = _agent_query(db, user, agent_id)
     data = body.model_dump(exclude_unset=True)
     modules = data.pop("modules", None)
+    if "allowed_origins" in data:
+        # Empty string clears the allowlist (widget blocked until set again).
+        raw = data["allowed_origins"]
+        data["allowed_origins"] = (
+            "" if raw is None or str(raw).strip() == "" else _sanitize_origins_or_400(raw)
+        )
     for key, value in data.items():
         setattr(agent, key, value)
     if modules is not None:
@@ -114,7 +129,7 @@ def update_agent(
 
 
 @router.delete("/{agent_id}")
-def delete_agent(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def delete_agent(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     agent = _agent_query(db, user, agent_id)
     convos = db.query(Conversation).filter(Conversation.agent_id == agent.id).all()
     for convo in convos:
@@ -136,17 +151,17 @@ def delete_agent(agent_id: int, user: User = Depends(current_user), db: Session 
 
 
 @router.get("/{agent_id}/embed")
-def embed_snippet(agent_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def embed_snippet(agent_id: int, user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     from app.config import settings
 
     agent = _agent_query(db, user, agent_id)
     script = (
-        f'<script src="{settings.api_public_url}/widget.js" '
+        f'<script src="{settings.api_public_url}/widget.js?v=15" '
         f'data-agent-key="{agent.public_key}" async></script>'
     )
     return {
         "public_key": agent.public_key,
-        "widget_url": f"{settings.api_public_url}/widget.js",
+        "widget_url": f"{settings.api_public_url}/widget.js?v=15",
         "script": script,
         "wordpress": (
             "Appearance → Theme File Editor → footer.php (or a header/footer plugin). "

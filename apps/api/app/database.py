@@ -62,10 +62,21 @@ def patch_mysql_columns():
     alters = [
         "ALTER TABLE users ADD COLUMN plan_minutes INT DEFAULT 120",
         "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0",
+        # DEFAULT 1 so existing accounts stay usable; new signups set False in app code
+        "ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT 1",
         "ALTER TABLE agents ADD COLUMN realtime_model VARCHAR(128) DEFAULT 'gpt-4o-realtime-preview'",
         "ALTER TABLE agents ADD COLUMN character_enabled BOOLEAN DEFAULT 0",
         "ALTER TABLE agents ADD COLUMN character_pack VARCHAR(64) DEFAULT 'character_emoji'",
+        "ALTER TABLE agents ADD COLUMN launcher_mode VARCHAR(16) DEFAULT 'mic'",
+        "ALTER TABLE agents ADD COLUMN launcher_skin VARCHAR(64) NULL",
+        "ALTER TABLE agents ADD COLUMN launcher_label VARCHAR(80) DEFAULT 'Tap to talk with AI'",
+        "ALTER TABLE agents ADD COLUMN launcher_color VARCHAR(16) DEFAULT '#2563eb'",
+        "ALTER TABLE agents ADD COLUMN launcher_size INT DEFAULT 160",
+        "ALTER TABLE agents ADD COLUMN character_size INT DEFAULT 200",
+        "ALTER TABLE agents ADD COLUMN panel_width INT DEFAULT 280",
+        "ALTER TABLE agents ADD COLUMN show_transcription BOOLEAN DEFAULT 0",
         "ALTER TABLE agents ADD COLUMN site_pages TEXT",
+        "ALTER TABLE agents ADD COLUMN max_call_minutes INT DEFAULT 10",
     ]
     for stmt in alters:
         try:

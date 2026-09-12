@@ -44,6 +44,8 @@ def agent_context(agent_id: int, db: Session = Depends(get_db)):
         "realtime_model": agent.realtime_model or settings.openai_realtime_model,
         "system_prompt": agent.system_prompt,
         "knowledge": knowledge,
+        "max_call_minutes": int(getattr(agent, "max_call_minutes", None) or 10),
+        "show_transcription": bool(getattr(agent, "show_transcription", False)),
         "modules": {
             "qa": bool(modules.qa) if modules else True,
             "support": bool(modules.support) if modules else False,

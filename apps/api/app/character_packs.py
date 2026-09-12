@@ -1,4 +1,7 @@
-"""Scan static character animation packs and expose frame URL lists."""
+"""Scan static character animation packs and expose frame URL lists.
+
+Supports plain folders (welcome, listning) and prefixed ones (1-Welcome, 4-End).
+"""
 
 from __future__ import annotations
 
@@ -14,9 +17,20 @@ _STATE_ALIASES: dict[str, str] = {
     "welcome": "welcome",
     "speaking": "speaking",
     "bye": "bye",
+    "end": "bye",
 }
 
 _FRAME_RE = re.compile(r"(\d+)")
+_PREFIX_RE = re.compile(r"^\d+[-_]")
+
+
+def _folder_to_state(folder_name: str) -> str | None:
+    key = folder_name.lower()
+    state = _STATE_ALIASES.get(key)
+    if state:
+        return state
+    return _STATE_ALIASES.get(_PREFIX_RE.sub("", key))
+
 
 _cache: dict[str, dict[str, list[str]]] = {}
 
@@ -45,7 +59,7 @@ def _scan_pack(pack: str) -> dict[str, list[str]]:
     for folder in sorted(pack_dir.iterdir()):
         if not folder.is_dir():
             continue
-        state_key = _STATE_ALIASES.get(folder.name.lower())
+        state_key = _folder_to_state(folder.name)
         if not state_key:
             continue
         frames = sorted(

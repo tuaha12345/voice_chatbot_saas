@@ -36,6 +36,7 @@ export default function AgentSettingsPage() {
           voice: agent.voice,
           system_prompt: agent.system_prompt,
           allowed_origins: agent.allowed_origins,
+          max_call_minutes: Number(agent.max_call_minutes) || 10,
           modules: agent.modules,
         }),
       });
@@ -86,11 +87,25 @@ export default function AgentSettingsPage() {
             value={agent.system_prompt}
             onChange={(e) => setAgent({ ...agent, system_prompt: e.target.value })}
           />
-          <label>Allowed origins (comma-separated, or *)</label>
+          <label>Allowed origins (comma-separated domains, empty = block until set)</label>
           <input
             value={agent.allowed_origins}
             onChange={(e) => setAgent({ ...agent, allowed_origins: e.target.value })}
           />
+          <label>Max call length (minutes)</label>
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={agent.max_call_minutes ?? 10}
+            onChange={(e) =>
+              setAgent({ ...agent, max_call_minutes: Number(e.target.value) || 1 })
+            }
+          />
+          <p className="muted">
+            Each voice session ends automatically after this many minutes (1–120). Lower values
+            reduce OpenAI cost if visitors leave the mic open.
+          </p>
           <h3>Modules</h3>
           <p className="muted">Turn on only what this agent should do. Voice tools follow these flags.</p>
           {["qa", "booking", "orders", "support"].map((key) => (

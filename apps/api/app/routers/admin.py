@@ -32,6 +32,7 @@ from app.realtime_catalog import (
 )
 from app.openai_costs import fetch_openai_org_costs_month
 from app.character_packs import list_packs
+from app.launcher_skins import list_skins, skin_label, skin_preview_url
 from app.schemas import (
     AdminAgentOut,
     AdminAgentUpdate,
@@ -41,6 +42,7 @@ from app.schemas import (
     AdminUserOut,
     AdminUserUpdate,
     CharacterPackOut,
+    LauncherSkinOut,
     OpenAiOrgCostsOut,
     RealtimeOptionsOut,
 )
@@ -73,6 +75,7 @@ def _user_out(db: Session, user: User) -> AdminUserOut:
         email=user.email,
         plan_minutes=user.plan_minutes,
         is_admin=bool(user.is_admin),
+        is_approved=bool(getattr(user, "is_approved", False) or user.is_admin),
         agent_count=agent_count,
         used_minutes=round(used, 2),
         cost_usd_month=round(float(cost or 0), 4),
@@ -109,6 +112,15 @@ def _agent_out(agent: Agent, user_email: str = "") -> AdminAgentOut:
         realtime_model=agent.realtime_model or settings.openai_realtime_model,
         character_enabled=bool(agent.character_enabled),
         character_pack=agent.character_pack or "character_emoji",
+        launcher_mode=getattr(agent, "launcher_mode", None) or "mic",
+        launcher_skin=getattr(agent, "launcher_skin", None) or None,
+        launcher_label=getattr(agent, "launcher_label", None) or "Tap to talk with AI",
+        launcher_color=getattr(agent, "launcher_color", None) or "#2563eb",
+        launcher_size=int(getattr(agent, "launcher_size", None) or 160),
+        character_size=int(getattr(agent, "character_size", None) or 200),
+        panel_width=int(getattr(agent, "panel_width", None) or 280),
+        show_transcription=bool(getattr(agent, "show_transcription", False)),
+        max_call_minutes=int(getattr(agent, "max_call_minutes", None) or 10),
         created_at=agent.created_at,
     )
 
@@ -127,6 +139,18 @@ def character_packs(_admin: User = Depends(current_admin)):
     return [
         CharacterPackOut(id=pack, label=pack.replace("_", " ").title())
         for pack in list_packs()
+    ]
+
+
+@router.get("/launcher-skins", response_model=list[LauncherSkinOut])
+def launcher_skins(_admin: User = Depends(current_admin)):
+    return [
+        LauncherSkinOut(
+            id=skin_id,
+            label=skin_label(skin_id),
+            preview_url=skin_preview_url(skin_id),
+        )
+        for skin_id in list_skins()
     ]
 
 
@@ -318,6 +342,12 @@ def update_user(
         if user.id == admin.id and body.is_admin is False:
             raise HTTPException(status_code=400, detail="Cannot remove your own admin access")
         user.is_admin = body.is_admin
+        if body.is_admin:
+            user.is_approved = True
+    if body.is_approved is not None:
+        user.is_approved = body.is_approved
+        if user.is_admin:
+            user.is_approved = True
     db.commit()
     db.refresh(user)
     return _user_out(db, user)
@@ -386,6 +416,43 @@ def update_agent(
         if pack and pack not in list_packs():
             raise HTTPException(status_code=400, detail="Unknown character pack")
         agent.character_pack = pack or "character_emoji"
+    if body.launcher_mode is not None:
+        mode = (body.launcher_mode or "mic").strip().lower()
+        if mode not in ("mic", "avatar", "floating"):
+            raise HTTPException(status_code=400, detail="Invalid launcher mode")
+        agent.launcher_mode = mode
+    if body.launcher_skin is not None:
+        skin = (body.launcher_skin or "").strip()
+        if skin and skin not in list_skins():
+            raise HTTPException(status_code=400, detail="Unknown launcher skin")
+        agent.launcher_skin = skin or None
+    if body.launcher_label is not None:
+        label = (body.launcher_label or "").strip() or "Tap to talk with AI"
+        agent.launcher_label = label[:80]
+    if body.launcher_color is not None:
+        color = (body.launcher_color or "").strip() or "#2563eb"
+        if not color.startswith("#") or len(color) not in (4, 7):
+            raise HTTPException(status_code=400, detail="Invalid launcher color")
+        agent.launcher_color = color[:16]
+    if body.launcher_size is not None:
+        agent.launcher_size = max(80, min(320, int(body.launcher_size)))
+    if body.character_size is not None:
+        agent.character_size = max(120, min(400, int(body.character_size)))
+    if body.panel_width is not None:
+        agent.panel_width = max(220, min(420, int(body.panel_width)))
+    if body.show_transcription is not None:
+        agent.show_transcription = bool(body.show_transcription)
+    # Validate skin required for avatar/floating after all field updates
+    final_mode = getattr(agent, "launcher_mode", None) or "mic"
+    if final_mode in ("avatar", "floating"):
+        skin_id = getattr(agent, "launcher_skin", None) or ""
+        if not skin_id or skin_id not in list_skins():
+            raise HTTPException(
+                status_code=400,
+                detail="launcher_skin is required for avatar/floating mode",
+            )
+    if body.max_call_minutes is not None:
+        agent.max_call_minutes = int(body.max_call_minutes)
     db.commit()
     db.refresh(agent)
     owner = db.get(User, agent.user_id)

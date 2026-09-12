@@ -58,6 +58,10 @@ export default function DashboardPage() {
           router.replace("/admin");
           return;
         }
+        if (!me.is_approved) {
+          router.replace("/pending");
+          return;
+        }
         setUser(me);
         setAllowed(true);
       })

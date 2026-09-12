@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.deps import current_user
 from app.models import User
+from app.rate_limit import auth_limiter, client_ip
 from app.schemas import LoginIn, RegisterIn, TokenOut, UserOut
 from app.security import create_access_token, hash_secret, verify_secret
 
@@ -14,7 +15,8 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=TokenOut)
-def register(body: RegisterIn, db: Session = Depends(get_db)):
+def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    auth_limiter.check(f"register:{client_ip(request)}")
     existing = db.query(User).filter(User.email == body.email.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -22,6 +24,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
         email=body.email.lower(),
         password_hash=hash_secret(body.password),
         plan_minutes=settings.default_plan_minutes,
+        is_approved=False,
     )
     db.add(user)
     db.commit()
@@ -30,7 +33,8 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenOut)
-def login(body: LoginIn, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    auth_limiter.check(f"login:{client_ip(request)}")
     user = db.query(User).filter(User.email == body.email.lower()).first()
     if not user or not verify_secret(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")

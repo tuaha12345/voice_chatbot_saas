@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -33,8 +35,16 @@ def current_admin(user: User = Depends(current_user)) -> User:
     return user
 
 
+def current_approved_user(user: User = Depends(current_user)) -> User:
+    if user.is_admin or bool(getattr(user, "is_approved", False)):
+        return user
+    raise HTTPException(status_code=403, detail="Account pending admin approval")
+
+
 def require_agent_secret(
     x_agent_secret: str | None = Header(default=None),
 ) -> None:
-    if not x_agent_secret or x_agent_secret != settings.internal_agent_secret:
+    expected = settings.internal_agent_secret or ""
+    provided = x_agent_secret or ""
+    if not provided or not expected or not secrets.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="Invalid agent secret")

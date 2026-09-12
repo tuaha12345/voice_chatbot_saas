@@ -8,12 +8,17 @@ from pydantic import BaseModel, EmailStr, Field
 
 class RegisterIn(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=8)
 
 
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 class TokenOut(BaseModel):
@@ -26,6 +31,7 @@ class UserOut(BaseModel):
     email: str
     plan_minutes: Optional[int] = 120
     is_admin: bool = False
+    is_approved: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -102,6 +108,7 @@ class AdminUserOut(BaseModel):
     email: str
     plan_minutes: Optional[int] = 120
     is_admin: bool
+    is_approved: bool = False
     agent_count: int
     used_minutes: float
     cost_usd_month: float = 0.0
@@ -110,9 +117,10 @@ class AdminUserOut(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     email: Optional[EmailStr] = None
-    password: Optional[str] = Field(default=None, min_length=6)
+    password: Optional[str] = Field(default=None, min_length=8)
     plan_minutes: Optional[int] = Field(default=None, ge=0)
     is_admin: Optional[bool] = None
+    is_approved: Optional[bool] = None
 
 
 class AdminAgentOut(BaseModel):
@@ -125,6 +133,15 @@ class AdminAgentOut(BaseModel):
     realtime_model: str
     character_enabled: bool = False
     character_pack: str = "character_emoji"
+    launcher_mode: str = "mic"
+    launcher_skin: Optional[str] = None
+    launcher_label: str = "Tap to talk with AI"
+    launcher_color: str = "#2563eb"
+    launcher_size: int = 160
+    character_size: int = 200
+    panel_width: int = 280
+    show_transcription: bool = False
+    max_call_minutes: int = 10
     created_at: datetime
 
 
@@ -134,11 +151,42 @@ class AdminAgentUpdate(BaseModel):
     realtime_model: Optional[str] = None
     character_enabled: Optional[bool] = None
     character_pack: Optional[str] = None
+    launcher_mode: Optional[str] = None
+    launcher_skin: Optional[str] = None
+    launcher_label: Optional[str] = Field(default=None, max_length=80)
+    launcher_color: Optional[str] = Field(default=None, max_length=16)
+    launcher_size: Optional[int] = Field(default=None, ge=80, le=320)
+    character_size: Optional[int] = Field(default=None, ge=120, le=400)
+    panel_width: Optional[int] = Field(default=None, ge=220, le=420)
+    show_transcription: Optional[bool] = None
+    max_call_minutes: Optional[int] = Field(default=None, ge=1, le=120)
 
 
 class CharacterPackOut(BaseModel):
     id: str
     label: str
+
+
+class LauncherSkinOut(BaseModel):
+    id: str
+    label: str
+    preview_url: str
+
+
+class LauncherSkinPayload(BaseModel):
+    id: str
+    avatar_url: str
+    idle_frames: list[str] = []
+
+
+class WidgetBootstrapOut(BaseModel):
+    launcher_mode: str = "mic"
+    launcher_label: str = "Tap to talk with AI"
+    launcher_color: str = "#2563eb"
+    launcher_size: int = 160
+    panel_width: int = 280
+    show_transcription: bool = False
+    skin: LauncherSkinPayload | None = None
 
 
 class RealtimeOptionsOut(BaseModel):
@@ -168,7 +216,8 @@ class AgentCreate(BaseModel):
     language: str = "en"
     voice: str = "alloy"
     system_prompt: str | None = None
-    allowed_origins: str = "*"
+    allowed_origins: str = ""
+    max_call_minutes: int = Field(default=10, ge=1, le=120)
 
 
 class AgentUpdate(BaseModel):
@@ -177,6 +226,7 @@ class AgentUpdate(BaseModel):
     voice: str | None = None
     system_prompt: str | None = None
     allowed_origins: str | None = None
+    max_call_minutes: int | None = Field(default=None, ge=1, le=120)
     modules: ModulesIn | None = None
 
 
@@ -189,6 +239,7 @@ class AgentOut(BaseModel):
     system_prompt: str
     public_key: str
     allowed_origins: str
+    max_call_minutes: int = 10
     created_at: datetime
     modules: ModulesOut | None = None
 
@@ -262,6 +313,10 @@ class WidgetSessionOut(BaseModel):
     voice_enabled: bool
     message: str | None = None
     character: CharacterOut | None = None
+    character_size: int = 200
+    panel_width: int = 280
+    show_transcription: bool = False
+    max_call_minutes: int = 10
 
 
 class ConversationSaveIn(BaseModel):

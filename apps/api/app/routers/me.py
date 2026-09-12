@@ -1,20 +1,34 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import current_user
+from app.deps import current_approved_user, current_user
 from app.models import Agent, AiUsageEvent, User
-from app.schemas import ModelUsageOut, UsageOut
+from app.schemas import ModelUsageOut, PasswordChangeIn, UsageOut
+from app.security import hash_secret, verify_secret
 from app.usage import month_start, usage_minutes_for_user
 
 router = APIRouter(prefix="/v1/me", tags=["me"])
 
 
+@router.post("/password")
+def change_password(
+    body: PasswordChangeIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_secret(body.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    user.password_hash = hash_secret(body.new_password)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/usage", response_model=UsageOut)
-def my_usage(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def my_usage(user: User = Depends(current_approved_user), db: Session = Depends(get_db)):
     used = usage_minutes_for_user(db, user)
     cap = user.plan_minutes if user.plan_minutes is not None else 120
     remaining = max(0.0, float(cap) - used)
